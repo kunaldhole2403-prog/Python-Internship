@@ -1,4 +1,9 @@
 import sqlite3
+import os
+import smtplib
+from email.message import EmailMessage
+from fpdf import FPDF
+
 conn = sqlite3.connect("student.db")
 cursor = conn.cursor()
 
@@ -11,6 +16,11 @@ cursor.execute("""
                mic integer not null
                )
 """)
+
+
+GMAIL_USER = "kunaldhole899@gmail.com"      
+GMAIL_APP_PASSWORD = "hfawjuftrafyuusk" 
+
 
 def add():
     sid = int(input("Enter Your Id: "))
@@ -26,6 +36,7 @@ def add():
     except Exception as e:
         print(e)
         print("-"*80)
+
 def update():
     upch = 0
     while upch!= 5:
@@ -85,6 +96,7 @@ def update():
                     print("-"*80)
         except Exception as e:
             print(e)
+
 def read():
     print("Id\tName\tDCN\tJAVA\tMIC")
     cursor.execute("Select * from Result")
@@ -135,6 +147,7 @@ def delete():
             case _:
                 print("Invalid Choice")
                 print("-"*80)
+
 def viewRes():
     print("ID\tName\tDCN\tJAVA\tMIC\tTotal\tPercentage")
     cursor.execute("Select * from Result")
@@ -148,7 +161,7 @@ def viewRes():
     print("-"*80)
 
 def genReport():
-    
+
     cursor.execute("Select * from Result")
     data = cursor.fetchall()
     print("Pass Student:\n")
@@ -168,9 +181,101 @@ def genReport():
             print(f"{row[0]}\t{row[1]}\t{row[2]}\t{row[3]}\t{row[4]}\t{total}\t{percentage:.2f}%")
     print("-"*80)
 
+
+# ---- PDF Generation ----
+def generate_pdf(data):
+    sid, sname, dcn, java, mic = data
+    total = dcn + java + mic
+    percentage = (total / 300) * 100
+    result_status = "PASS" if percentage >= 40 else "FAIL"
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, "Student Result", ln=True, align="C")
+    pdf.ln(10)
+
+    pdf.set_font("Helvetica", "", 12)
+    rows = [
+        ("Student ID", sid),
+        ("Name", sname),
+        ("DCN Marks", dcn),
+        ("JAVA Marks", java),
+        ("MIC Marks", mic),
+        ("Total", total),
+        ("Percentage", f"{percentage:.2f}%"),
+        ("Result", result_status),
+    ]
+    for label, value in rows:
+        pdf.cell(60, 10, str(label), border=1)
+        pdf.cell(0, 10, str(value), border=1, ln=True)
+
+    filename = f"result_{sid}.pdf"
+    pdf.output(filename)
+    return filename
+
+
+# ---- Case 8: Download PDF ----
+def downloadPDF():
+    sid = int(input("Enter the Student ID to generate PDF: "))
+    cursor.execute("SELECT sid, sname, dcn, java, mic FROM Result WHERE sid = ?", (sid,))
+    data = cursor.fetchone()
+
+    if not data:
+        print("Student ID Not Found")
+        print("-"*80)
+        return
+
+    filename = generate_pdf(data)
+    print(f"PDF Generated Successfully: {filename}")
+    print("-"*80)
+
+
+# ---- Email Sending ----
+def send_email(to_email, filename, sname):
+    msg = EmailMessage()
+    msg["Subject"] = f"Result for {sname}"
+    msg["From"] = GMAIL_USER
+    msg["To"] = to_email
+    msg.set_content(f"Dear {sname},\n\nPlease find your result attached.\n\nRegards,\nResult System")
+
+    with open(filename, "rb") as f:
+        msg.add_attachment(f.read(), maintype="application", subtype="pdf", filename=filename)
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        smtp.send_message(msg)
+
+    print(f"Email sent successfully to {to_email}")
+    print("-"*80)
+
+
+# ---- Case 9: Send Result via Email ----
+def sendResultEmail():
+    sid = int(input("Enter the Student ID to send result: "))
+    cursor.execute("SELECT sid, sname, dcn, java, mic FROM Result WHERE sid = ?", (sid,))
+    data = cursor.fetchone()
+
+    if not data:
+        print("Student ID Not Found")
+        print("-"*80)
+        return
+
+    to_email = input("Enter the Email to send the result to: ")
+
+    filename = f"result_{data[0]}.pdf"
+
+    if not os.path.exists(filename):
+        print("PDF not found, generating it first...")
+        filename = generate_pdf(data)
+
+    send_email(to_email, filename, data[1])
+    print("-"*80)
+
+
 ch = 0
-while ch!= 8:
-    print("1.Add Data\n2.Update Data\n3.Read Data\n4.Search Data\n5.Delete Data\n6.View Result\n7.Generate report\n8.EXIT")
+while ch!= 10:
+    print("1.Add Data\n2.Update Data\n3.Read Data\n4.Search Data\n5.Delete Data\n6.View Result\n7.Generate report\n8.Download PDF\n9.Send Result via Email\n10.EXIT")
     ch = int(input("Enter you choice: "))
     match ch:
         case 1:
@@ -194,6 +299,12 @@ while ch!= 8:
         case 7:
             genReport()
         case 8:
+            print("-"*80)
+            downloadPDF()
+        case 9:
+            print("-"*80)
+            sendResultEmail()
+        case 10:
             exit()
         case _:
             print("Inavalid Choice")
